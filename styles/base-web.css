@@ -291,6 +291,11 @@ figure.fig.live .fig-title::after { content: " · live"; color: var(--good); }
 .refs ol { padding-left: 22px; color: var(--text-dim); font-size: 15.5px; }
 .refs li { margin: 8px 0; }
 .refs a { color: var(--link); word-break: break-all; }
+/* a note's glossary follows the references as back matter and takes their
+   size; a book's glossary page (the same list) keeps reading size */
+.glossary-section dl.glossary { font-size: 15.5px; }
+.glossary-section dl.glossary dt { margin-top: 10px; }
+.glossary-section dl.glossary dd { font-size: inherit; }
 .colophon { margin-top: 72px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--text-ghost); font: 400 13.5px var(--mono); }
 
 /* ── book chrome (landing + chapter pages) ── */
