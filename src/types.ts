@@ -29,6 +29,24 @@ export interface Frontmatter {
   doi?: string;
   pdf_name?: string;
   abstract: string;
+  /** The social preview card (see social.ts). Needs `site` in the build config. */
+  social?: SocialSpec;
+}
+
+/** The `social` block of a document's frontmatter. With `site` set and no
+ * block at all, every page still gets the full meta set and a text-only card. */
+export interface SocialSpec {
+  /** A figure spec, as a ```figure fence holds it, written in YAML (or as a
+   * JSON string); parsed and resolved by the vocabulary, so a bad one fails
+   * the build. Its chart is placed beside the text. */
+  figure?: unknown;
+  /** Card and og:title; defaults to the document title (the card falls back
+   * to short_title when the title would be cut). */
+  title?: string;
+  /** Meta description; defaults to the abstract's opening under 200 characters. */
+  description?: string;
+  /** A ready picture, repo-relative, shipped instead of a composed card. */
+  image?: string;
 }
 
 /** A project's closed figure vocabulary, injected into the pipeline.

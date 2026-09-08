@@ -23,6 +23,24 @@ export { embedPass } from "./embeds.js";
 export { listingHtml, listingsForPdf, splitRegions } from "./listings.js";
 export { buildNote, type BuildResult, type NoteConfig } from "./note.js";
 export { runDev, type DevConfig } from "./dev.js";
+export {
+  buildCard,
+  type BuiltCard,
+  CARD_H,
+  CARD_W,
+  type CardInput,
+  type CardJob,
+  cardSvg,
+  descriptionFrom,
+  extractSvg,
+  renderCardPng,
+  rootTokens,
+  socialHead,
+  socialMetaHtml,
+  type SocialMeta,
+  type SocialPage,
+  wrapTitle,
+} from "./social.js";
 export { articlePasses, headingAnchorPass, makeHighlighter, Pipeline } from "./pipeline.js";
 export { authorsHtml, headHtml, mastheadHtml, splitFrontmatter } from "./shell.js";
 export { slugify, tocFloatHtml, tocHtml } from "./toc.js";
@@ -32,6 +50,7 @@ export {
   type Author,
   type Frontmatter,
   type Ref,
+  type SocialSpec,
   type TocEntry,
   type TocOptions,
   type Vocabulary,

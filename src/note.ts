@@ -38,6 +38,7 @@ import { annotateTerms, type GlossaryMarks, glossaryListHtml, glossaryScript, lo
 import { listingsForPdf } from "./listings.js";
 import type { PracticeConfig } from "./practice.js";
 import { renderPdf } from "./pdf.js";
+import { buildCard, descriptionFrom, socialHead } from "./social.js";
 import { articlePasses, headingAnchorPass, makeHighlighter, Pipeline, sectionRefPass } from "./pipeline.js";
 import { headHtml, mastheadHtml, splitFrontmatter } from "./shell.js";
 import { tocFloatHtml, tocHtml } from "./toc.js";
@@ -87,6 +88,11 @@ export interface NoteConfig {
    * e.g. "https://website.com". Without it a popover links to
    * the entry in the page's own Glossary section. */
   conceptSite?: string;
+  /** The site's address, e.g. "https://hillspace.justindujardin.com".
+   * Turns on the social preview: og/twitter meta on the web page and a
+   * 1200×630 card at dist/social.png, composed from the masthead and the
+   * frontmatter's `social` block (see social.ts). */
+  site?: string;
   /** Masthead eyebrow when the frontmatter has no kicker. */
   kicker?: string;
   /** Footer line on the web page. */
@@ -278,9 +284,39 @@ export async function buildNote(cfg: NoteConfig): Promise<BuildResult> {
   const pdfHtmlName = htmlName === "index.html" ? "pdf.html" : htmlName.replace(/\.html$/, ".pdf.html");
   const colophon = cfg.colophon ? `\n<footer class="colophon">${cfg.colophon}</footer>` : "";
   const hydrateTag = cfg.hydrate ? `<script type="module" src="assets/hydrate.js"></script>` : "";
+
+  // ── social preview: the card, and the meta the web page carries ──────
+  const siteUrl = cfg.site?.replace(/\/$/, "");
+  if (fm.social && !siteUrl)
+    throw new Error(`${cfg.source}: frontmatter has a social block but the build config sets no site`);
+  const stem = htmlName.replace(/\.html$/, "");
+  const card = siteUrl
+    ? buildCard({
+        root: cfg.root,
+        dist,
+        out: stem === "index" ? "social.png" : `${stem}.social.png`,
+        social: fm.social,
+        vocabulary: cfg.vocabulary,
+        kicker: fm.kicker ?? kicker,
+        title: fm.title,
+        shortTitle: fm.short_title,
+        byline: (fm.authors ?? []).map((a) => a.name).join(" · "),
+        host: new URL(siteUrl).host,
+        webCss: readFileSync(join(dist, "assets", "web.css"), "utf-8"),
+        source: cfg.source,
+      })
+    : undefined;
+  const meta = socialHead({
+    site: siteUrl,
+    page: htmlName === "index.html" ? "" : htmlName,
+    title: fm.social?.title ?? fm.title,
+    description: fm.social?.description ?? descriptionFrom(fm.abstract),
+    image: card,
+  });
+
   writeFileSync(
     join(dist, htmlName),
-    `<!doctype html><html lang="en"><head>${headHtml(fm.short_title, "assets/web.css")}</head>
+    `<!doctype html><html lang="en"><head>${headHtml(fm.short_title, "assets/web.css", { meta })}</head>
 <body>${floatToc}<main class="wrap">${titleBlock}${webToc}<article>${webArticle}</article>${colophon}
 </main>${hydrateTag}</body></html>`,
   );

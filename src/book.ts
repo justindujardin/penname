@@ -42,12 +42,14 @@ import { annotateTerms, type GlossaryMarks, glossaryListHtml, glossaryScript, lo
 import type { PracticeConfig } from "./practice.js";
 import { renderPdf } from "./pdf.js";
 import { articlePasses, makeHighlighter, Pipeline } from "./pipeline.js";
+import { buildCard, descriptionFrom, socialHead } from "./social.js";
 import { headHtml, mastheadHtml, panelNavHtml, splitFrontmatter, type PanelGroup } from "./shell.js";
 import { tocHtml } from "./toc.js";
 import {
   DEFAULT_PDF_CHAR_SUBS,
   type Frontmatter,
   type Ref,
+  type SocialSpec,
   type TocEntry,
   type TocOptions,
   type Vocabulary,
@@ -67,6 +69,8 @@ export interface ChapterEntry {
 export interface ChapterFrontmatter {
   title: string;
   blurb?: string;
+  /** A card of the chapter's own; otherwise the chapter shares the book's. */
+  social?: SocialSpec;
 }
 
 export interface BookConfig {
@@ -106,6 +110,10 @@ export interface BookConfig {
   /** Which uses of a term get a mark: "first" on the page, the first in
    * each "section" (default; a chapter page has one), or "every" use. */
   glossaryMarks?: GlossaryMarks;
+  /** The site's address. Turns on the social preview: og/twitter meta on
+   * every page and a card at dist/social.png from book.md's `social` block,
+   * shared by the chapters unless one carries its own (see social.ts). */
+  site?: string;
   kicker?: string;
   colophon?: string;
   pdfName?: string;
@@ -214,6 +222,25 @@ export async function buildBook(cfg: BookConfig): Promise<{ chapters: number; pd
 
   const kicker = cfg.kicker ?? "a course";
   const pdfName = fm.pdf_name ?? cfg.pdfName ?? "book.pdf";
+
+  // ── social preview: the book's card, a chapter's own, the meta per page ──
+  const siteUrl = cfg.site?.replace(/\/$/, "");
+  for (const [social, where] of [[fm.social, cfg.book], ...chapters.map((c) => [c.fm.social, c.file])] as const)
+    if (social && !siteUrl) throw new Error(`${where}: frontmatter has a social block but the build config sets no site`);
+  const cardJob = {
+    root: cfg.root,
+    dist,
+    vocabulary: cfg.vocabulary,
+    byline: (fm.authors ?? []).map((a) => a.name).join(" · "),
+    host: siteUrl ? new URL(siteUrl).host : "",
+    webCss: siteUrl ? readFileSync(join(dist, "assets", "web.css"), "utf-8") : "",
+  };
+  const bookCard = siteUrl
+    ? buildCard({ ...cardJob, out: "social.png", social: fm.social, kicker: fm.kicker ?? kicker, title: fm.title, shortTitle: fm.short_title, source: cfg.book })
+    : undefined;
+  const bookDescription = fm.social?.description ?? descriptionFrom(fm.abstract);
+  const pageHead = (page: string, title: string, description: string | undefined, image = bookCard) =>
+    socialHead({ site: siteUrl, page, title, description, image });
   const acts = [...new Set(chapters.map((c) => c.act ?? ""))];
 
   // ── landing page: masthead + intro prose + act-grouped chapter list ──
@@ -289,7 +316,7 @@ export async function buildBook(cfg: BookConfig): Promise<{ chapters: number; pd
 
   writeFileSync(
     join(dist, "index.html"),
-    `<!doctype html><html lang="en"><head>${headHtml(fm.short_title, "assets/web.css")}</head>
+    `<!doctype html><html lang="en"><head>${headHtml(fm.short_title, "assets/web.css", { meta: pageHead("", fm.social?.title ?? fm.title, bookDescription) })}</head>
 ${shell("", "", `${mastheadHtml(fm, { kicker, pdfName })}
 <article class="book-intro">${(() => { const t = withTerms(chapterRefPass(conceptLinkPass(conceptBacklinkPass(intro, "", ""), "concepts/"), ""), ""); return t.html + t.script; })()}</article>
 ${actsHtml}
@@ -311,9 +338,14 @@ ${conceptStore ? (callouts ? appendixIndexHtml(conceptStore, uses, labelFor, "co
       `</nav>`;
     const title = `${ch.num ? `${ch.num} · ` : ""}${ch.fm.title} — ${fm.short_title}`;
     mkdirSync(join(dist, ch.slug), { recursive: true });
+    const card =
+      siteUrl && ch.fm.social
+        ? buildCard({ ...cardJob, out: `${ch.slug}/social.png`, social: ch.fm.social, kicker: ch.num ? `Chapter ${ch.num}` : (fm.kicker ?? kicker), title: ch.fm.title, source: ch.file })
+        : bookCard;
+    const meta = pageHead(`${ch.slug}/`, ch.fm.social?.title ?? title, ch.fm.social?.description ?? ch.fm.blurb ?? bookDescription, card);
     writeFileSync(
       join(dist, ch.slug, "index.html"),
-      `<!doctype html><html lang="en"><head>${headHtml(title, "assets/web.css", { assetPrefix: "../" })}</head>
+      `<!doctype html><html lang="en"><head>${headHtml(title, "assets/web.css", { assetPrefix: "../", meta })}</head>
 ${shell("../", ch.slug, `<div class="crumbs"><a href="../">${escAttr(fm.short_title)}</a>${ch.act ? `<span>${escAttr(ch.act)}</span>` : ""}</div>
 <header class="chapter-head">${ch.num ? `<div class="kicker">Chapter ${ch.num}</div>` : ""}<h1 class="doc-title">${escAttr(ch.fm.title)}</h1>${ch.fm.blurb ? `<p class="chapter-lede">${escAttr(ch.fm.blurb)}</p>` : ""}</header>
 <article>${(() => { const t = withTerms(chapterRefPass(conceptLinkPass(conceptBacklinkPass(ch.html, ch.slug), "../concepts/"), "../"), "../"); return t.html + t.script; })()}</article>
@@ -326,7 +358,7 @@ ${nav}`)}</html>`,
     mkdirSync(join(dist, "concepts"), { recursive: true });
     writeFileSync(
       join(dist, "concepts", "index.html"),
-      `<!doctype html><html lang="en"><head>${headHtml(`Concepts — ${fm.short_title}`, "assets/web.css", { assetPrefix: "../" })}</head>
+      `<!doctype html><html lang="en"><head>${headHtml(`Concepts — ${fm.short_title}`, "assets/web.css", { assetPrefix: "../", meta: pageHead("concepts/", `Concepts — ${fm.short_title}`, bookDescription) })}</head>
 ${shell("../", "concepts", `<div class="crumbs"><a href="../">${escAttr(fm.short_title)}</a><span>appendix</span></div>
 <header class="chapter-head"><div class="kicker">Appendix</div><h1 class="doc-title">Concepts</h1></header>
 ${appendixIndexHtml(conceptStore!, uses, labelFor, "", { label: "every concept the book leans on" })}`)}</html>`,
@@ -335,7 +367,7 @@ ${appendixIndexHtml(conceptStore!, uses, labelFor, "", { label: "every concept t
       mkdirSync(join(dist, "concepts", entry.slug), { recursive: true });
       writeFileSync(
         join(dist, "concepts", entry.slug, "index.html"),
-        `<!doctype html><html lang="en"><head>${headHtml(`${entry.title} — ${fm.short_title}`, "assets/web.css", { assetPrefix: "../../" })}</head>
+        `<!doctype html><html lang="en"><head>${headHtml(`${entry.title} — ${fm.short_title}`, "assets/web.css", { assetPrefix: "../../", meta: pageHead(`concepts/${entry.slug}/`, `${entry.title} — ${fm.short_title}`, conceptStore!.get(entry.slug)?.gist ?? bookDescription) })}</head>
 ${shell("../../", `concept:${entry.slug}`, `<div class="crumbs"><a href="../../">${escAttr(fm.short_title)}</a><a href="../">concepts</a></div>
 <article class="concept-page">${(() => { const t = withTerms(chapterRefPass(conceptLinkPass(entry.web, "../"), "../../"), "../../"); return t.html + t.script; })()}</article>`)}</html>`,
       );
@@ -347,7 +379,7 @@ ${shell("../../", `concept:${entry.slug}`, `<div class="crumbs"><a href="../../"
     mkdirSync(join(dist, "glossary"), { recursive: true });
     writeFileSync(
       join(dist, "glossary", "index.html"),
-      `<!doctype html><html lang="en"><head>${headHtml(`Glossary — ${fm.short_title}`, "assets/web.css", { assetPrefix: "../" })}</head>
+      `<!doctype html><html lang="en"><head>${headHtml(`Glossary — ${fm.short_title}`, "assets/web.css", { assetPrefix: "../", meta: pageHead("glossary/", `Glossary — ${fm.short_title}`, bookDescription) })}</head>
 ${shell("../", "glossary", `<div class="crumbs"><a href="../">${escAttr(fm.short_title)}</a><span>appendix</span></div>
 <header class="chapter-head"><div class="kicker">Appendix</div><h1 class="doc-title">Glossary</h1><p class="chapter-lede">The field's words, and the nickname this book uses for each. On any page, click an underlined word for its entry, or switch the whole site to nicknames from the menu.</p></header>
 ${glossaryListHtml(glossary, (slug) => `../concepts/${slug}/`)}`)}</html>`,

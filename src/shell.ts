@@ -4,11 +4,15 @@ import { parse as parseYaml } from "yaml";
 
 import { DEFAULT_FONTS_HREF, type Frontmatter } from "./types.js";
 
-export function headHtml(title: string, cssHref: string, opts: { fonts?: string; assetPrefix?: string } = {}): string {
+export function headHtml(
+  title: string,
+  cssHref: string,
+  opts: { fonts?: string; assetPrefix?: string; meta?: string } = {},
+): string {
   const prefix = opts.assetPrefix ?? "";
   return `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title}</title>
+<title>${title}</title>${opts.meta ?? ""}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="${opts.fonts ?? DEFAULT_FONTS_HREF}" rel="stylesheet">
 <link rel="stylesheet" href="${prefix}assets/katex/katex.min.css">
