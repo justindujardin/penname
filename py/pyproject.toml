@@ -1,0 +1,16 @@
+[project]
+name = "limned"
+version = "0.1.0"
+description = "Draw a PyTorch model from the model itself: one reflected forward pass to a modelmap JSON."
+requires-python = ">=3.10"
+dependencies = ["torch"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["limned*"]
+
+[tool.setuptools.package-data]
+limned = ["py.typed"]

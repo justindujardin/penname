@@ -1,0 +1,230 @@
+/* penname — structural print theme for WeasyPrint. Same token names as
+   the web base with values chosen for paper: a light page, serif body,
+   ink-safe accents. The figure renderers never know which theme they are
+   in. Projects append a theme defining their palette and figure classes. */
+
+:root {
+  --bg: #ffffff;
+  --panel: #f6f7f9;
+  --panel-deep: #eceef2;
+  --border: #d6dae1;
+  --text: #16181d;
+  --text-dim: #3d434e;
+  --text-faint: #6a7180;
+  --text-ghost: #9aa1ad;
+  --good: #1e7d43;
+  --bad: #b3362c;
+  --accent: #b06f10;
+  --link: #0b7285;
+  --accent-2: #6d4fa1;
+  --sans: "DejaVu Sans", sans-serif;
+  --serif: "DejaVu Serif", serif;
+  --mono: "DejaVu Sans Mono", monospace;
+}
+
+@page {
+  size: letter;
+  margin: 24mm 21mm 26mm;
+  @bottom-center {
+    content: counter(page);
+    font-family: "DejaVu Sans", sans-serif;
+    font-size: 9pt;
+    color: #6a7180;
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; color: var(--text); font: 400 10.5pt/1.55 var(--serif); }
+main { max-width: none; }
+
+/* ── masthead ── */
+.kicker { font: 500 8pt var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--link); text-align: center; }
+.doc-title { font: 600 17pt/1.25 var(--sans); text-align: center; margin: 8pt 0 6pt; }
+.byline { text-align: center; font-size: 10.5pt; color: var(--text-dim); }
+.byline .author + .author::before { content: " · "; color: var(--text-ghost); }
+.affil { font-size: 8.5pt; color: var(--text-faint); }
+.byline a { color: var(--text-faint); text-decoration: none; }
+.dateline { text-align: center; font: 400 8.5pt var(--mono); color: var(--text-faint); margin-top: 4pt; }
+.dateline a { color: var(--link); text-decoration: none; }
+.credit { text-align: center; font-size: 9pt; color: var(--text-faint); font-style: italic; margin-top: 2pt; }
+.abstract {
+  margin: 14pt 26pt 4pt;
+  padding: 10pt 12pt;
+  background: var(--panel);
+  border: 0.6pt solid var(--border);
+  border-radius: 6pt;
+  font-size: 9.3pt;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.abs-label { font: 500 7.5pt var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-right: 5pt; }
+
+/* ── contents: WeasyPrint resolves the page numbers ── */
+.toc { margin: 16pt 26pt 4pt; }
+.toc-title { font: 500 7.5pt var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 5pt; }
+.toc ol { list-style: none; margin: 0; padding: 0; font-size: 9pt; line-height: 1.7; color: var(--text-dim); }
+.toc li.toc-2 { margin-left: 12pt; }
+.toc li.toc-3 { margin-left: 24pt; }
+.toc a { color: var(--text-dim); text-decoration: none; }
+.toc a::after { content: leader(". ") target-counter(attr(href), page); color: var(--text-faint); }
+
+/* ── native PDF outline (the reader's bookmarks pane) ──
+   WeasyPrint bookmarks every h1–h6 by default; keep article headings and
+   suppress page chrome, so the outline mirrors the printed Contents. */
+.doc-title, .toc-title { bookmark-level: none; }
+article h1 { bookmark-level: 1; }
+article h2 { bookmark-level: 2; }
+article h3 { bookmark-level: 3; }
+
+/* ── prose ── */
+article h1 { font: 600 13pt var(--sans); margin: 18pt 0 6pt; page-break-after: avoid; }
+article h2 { font: 600 11pt var(--sans); margin: 12pt 0 4pt; page-break-after: avoid; }
+article p { margin: 7pt 0; text-align: justify; }
+article a { color: var(--link); text-decoration: none; }
+a.cite { color: var(--link); font-size: 0.8em; vertical-align: super; }
+a.cite.narrative { font-size: 1em; vertical-align: baseline; }
+code { font: 400 0.85em var(--mono); background: var(--panel); border-radius: 2pt; padding: 0 2pt; }
+pre { background: var(--panel); border: 0.6pt solid var(--border); border-radius: 4pt; padding: 8pt 10pt; page-break-inside: avoid; white-space: pre-wrap; }
+pre code { background: none; padding: 0; font-size: 8pt; line-height: 1.5; }
+article img { max-width: 100%; height: auto; display: block; margin: 10pt auto; }
+.table-wrap { margin: 11pt 0; }
+article table { border-collapse: collapse; font-size: 9pt; width: 100%; page-break-inside: avoid; line-height: 1.5; }
+article th, article td { border: 0.5pt solid var(--border); padding: 4.5pt 7pt; text-align: left; }
+article th { background: var(--panel); font-weight: 600; font-family: var(--sans); }
+article tbody tr:nth-child(even) { background: #fbfcfd; }
+article blockquote { margin: 7pt 0; padding: 1pt 10pt; border-left: 1.5pt solid var(--border); color: var(--text-dim); }
+.katex-display { margin: 10pt 0; }
+
+/* ── figure chrome ── */
+figure.fig {
+  margin: 12pt 0;
+  padding: 10pt 12pt 8pt;
+  background: var(--panel);
+  border: 0.6pt solid var(--border);
+  border-radius: 6pt;
+  page-break-inside: avoid;
+}
+.fig-title { font: 500 8.5pt var(--mono); color: var(--text-dim); margin-bottom: 8pt; }
+.fig-note { font: 400 8.5pt var(--sans); color: var(--text-faint); margin-top: 7pt; line-height: 1.45; }
+figcaption { font: 400 8.5pt var(--sans); color: var(--text-faint); margin-top: 6pt; }
+.fig-spec { display: none; }
+.chart { width: 100%; height: auto; }
+.panel-row svg { width: 49%; height: auto; }
+
+.ax-label { fill: var(--text-faint); font: 500 8.5px var(--mono); }
+.ax-label.ghost { fill: var(--text-ghost); }
+.pt-label { fill: var(--text-dim); font: 500 8.5px var(--mono); }
+.pt-label.small { font-size: 7.5px; }
+.pt-label.ghost { fill: var(--text-ghost); }
+
+.leg-row { margin-top: 6pt; }
+.leg { font: 500 8pt var(--mono); color: var(--text-dim); margin-right: 12pt; }
+.leg-swatch { width: 7pt; height: 7pt; border-radius: 1.5pt; display: inline-block; margin-right: 3pt; vertical-align: -1pt; }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+
+.ctl-row { display: none; }
+
+/* clock faces (the `clockFace` primitive): layout only — ink rides on the svg */
+.clock-row { display: flex; flex-wrap: wrap; gap: 6pt; justify-content: center; }
+.clock-cell { text-align: center; }
+.clock-cap { font: 400 7pt var(--mono); color: var(--text-ghost); }
+.btn { display: none; }
+
+/* syntax highlighting (highlight.js classes, token colors) */
+.hljs-keyword { color: var(--link); }
+.hljs-string { color: var(--good); }
+.hljs-number { color: var(--accent); }
+.hljs-comment { color: var(--text-ghost); font-style: italic; }
+.hljs-title, .hljs-title.function_ { color: var(--accent-2); }
+.hljs-built_in { color: var(--link); }
+.hljs-params { color: var(--text-dim); }
+.hljs-literal { color: var(--accent); }
+.hljs-operator { color: var(--text-dim); }
+.hljs-meta { color: var(--text-faint); }
+
+/* ── book chapters: each starts a fresh page ── */
+section.chapter { page-break-before: always; }
+.ch-head { margin: 0 0 10pt; }
+.ch-head .kicker { text-align: left; }
+.ch-head .ch-title { font: 600 15pt/1.25 var(--sans); margin: 4pt 0 4pt; }
+.chapter-lede { color: var(--text-dim); font-size: 9.3pt; margin: 2pt 0 0; }
+.book-intro { color: var(--text-dim); }
+
+.refs { margin-top: 20pt; }
+.refs h1 { font-size: 12pt; }
+.refs ol { padding-left: 14pt; font-size: 8.8pt; color: var(--text-dim); }
+.refs li { margin: 4pt 0; }
+.refs a { color: var(--link); }
+.colophon { display: none; }
+
+/* ── course blocks: the print reader gets the whole ladder inline ──
+   courseHtmlForPdf turned every <details> into these divs; depth shows as
+   nested left rules, and concept recap stubs carry a real page number. */
+.unpack-print { margin: 7pt 0; padding: 1pt 0 1pt 8pt; border-left: 1.2pt solid var(--border); }
+.unpack-label { font: 600 9pt var(--sans); color: var(--text-dim); margin: 2pt 0; }
+.unpack-tag { font: 500 7pt var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-right: 3pt; }
+.concept-print { background: var(--panel); border: 0.6pt solid var(--border); border-left: 1.8pt solid var(--accent); border-radius: 4pt; padding: 6pt 10pt; margin: 10pt 0; }
+div.concept-head { margin-bottom: 4pt; }
+.concept-kicker { font: 500 7pt var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-right: 3pt; }
+.concept-head .concept-title { font: 600 10pt var(--sans); }
+.concept-gist { color: var(--text-faint); font-size: 8.5pt; margin-left: 3pt; }
+.concept-body { font-size: 9.7pt; }
+.concept-requires { font-size: 8.5pt; color: var(--text-faint); }
+.concept-stub { background: var(--panel); border: 0.6pt solid var(--border); border-radius: 3pt; padding: 4pt 8pt; font-size: 9pt; color: var(--text-dim); }
+a.concept-back { color: var(--link); }
+a.concept-back::after { content: " (p. " target-counter(attr(href), page) ")"; color: var(--text-faint); }
+
+/* ── course, callout mode: a callout prints as one line with the page
+   number of its appendix entry; the appendix holds every unit in full ── */
+.concepts { margin: 6pt 0; }
+.concept-ref { background: var(--panel); border: 0.6pt solid var(--border); border-left: 1.8pt solid var(--accent); border-radius: 3pt; padding: 4pt 8pt; margin: 5pt 0; font-size: 9pt; color: var(--text-dim); }
+.concept-page-link { display: none; }
+.concepts-appendix { break-before: page; }
+.concepts-appendix h1 { font-size: 12pt; }
+section.concept-entry { margin: 12pt 0 16pt; page-break-inside: auto; }
+.concept-entry-head { margin-bottom: 4pt; }
+.concept-entry-title { font: 600 11pt var(--sans); margin: 2pt 0; }
+.concept-entry-head .concept-gist { display: block; margin: 0 0 3pt; }
+.concept-used { display: none; }
+
+/* ── course: printed worksheets + the answer key ── */
+.ws-spec { display: none; }
+section.worksheet { border: 0.8pt dashed var(--border); border-radius: 4pt; padding: 6pt 10pt 2pt; margin: 8pt 0; page-break-inside: avoid; }
+.ws-head { font: 500 7pt var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+.ws-key-note { color: var(--text-faint); letter-spacing: 0; text-transform: none; }
+.ws-list { font-size: 9.3pt; padding-left: 12pt; margin: 4pt 0; }
+.ws-problem { margin: 5pt 0; }
+.ws-space { height: 20pt; border-bottom: 0.6pt solid var(--border); margin: 3pt 0 2pt; }
+.ws-choices { list-style: lower-alpha; font-size: 8.8pt; color: var(--text-dim); padding-left: 16pt; margin: 2pt 0; }
+section.answer-key { break-before: page; }
+.answer-key h1 { font-size: 12pt; }
+.key-block { margin: 7pt 0; page-break-inside: avoid; }
+.key-title { font: 600 9.5pt var(--sans); }
+.key-where { color: var(--text-faint); font-weight: 400; }
+.key-list { font-size: 9pt; color: var(--text-dim); padding-left: 14pt; margin: 2pt 0; }
+
+/* ── background appendix (:::background) ── */
+.bg-ref { font-style: italic; }
+.bg-ref a::after { content: " (p. " target-counter(attr(href), page) ")"; }
+section.appendix { break-before: page; }
+
+/* ── listings: the region prints inline, the full file in its appendix ── */
+.listing-print pre { margin-bottom: 0; }
+.listing-ref { font-style: italic; font-size: 8.8pt; margin: 3pt 0 10pt; color: var(--text-dim); }
+.listing-ref a::after { content: " (p. " target-counter(attr(href), page) ")"; }
+.listings-appendix h2 { font-family: var(--mono); font-size: 9.5pt; font-weight: 600; }
+.listings-appendix pre { page-break-inside: auto; }
+.sec-ref { color: inherit; }
+
+/* ── glossary appendix; terms print unmarked ── */
+.term { text-decoration: none; }
+.glossary-appendix { break-before: page; }
+.glossary-appendix h1 { font-size: 12pt; }
+dl.glossary dt { font: 600 9.5pt var(--sans); margin-top: 7pt; }
+dl.glossary dt .nick { font: 500 7.5pt var(--mono); color: var(--accent); margin-left: 6pt; }
+dl.glossary dd { margin: 1pt 0 0; font-size: 9pt; color: var(--text-dim); }
+dl.glossary a.concept-link[href^="#"]::after { content: " (p. " target-counter(attr(href), page) ")"; color: var(--text-faint); }
+
+a.chapter-ref { color: var(--text); text-decoration: none; }
+a.chapter-ref::after { content: " (p. " target-counter(attr(href), page) ")"; color: var(--text-faint); font-size: 0.85em; }

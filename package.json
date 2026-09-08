@@ -1,0 +1,35 @@
+{
+  "name": "penname",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "tool for generating PDFs and interactive websites from one source",
+  "exports": {
+    ".": "./src/index.ts",
+    "./svg": "./src/svg.ts",
+    "./hydrate": "./src/hydrate.ts",
+    "./figure": "./src/figure.ts",
+    "./practice": "./src/practice.ts",
+    "./modelmap": "./src/modelmap.ts",
+    "./modelmap-build": "./src/modelmap-build.ts",
+    "./styles/*": "./styles/*"
+  },
+  "scripts": {
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
+    "@types/katex": "^0.16.8",
+    "@types/markdown-it": "^14.1.2",
+    "esbuild": "^0.28.1",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.18.1",
+    "markdown-it": "^14.3.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}
