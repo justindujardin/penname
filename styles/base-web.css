@@ -51,6 +51,9 @@ body {
 .byline .author + .author::before { content: " · "; color: var(--text-ghost); }
 .affil { color: var(--text-faint); font-size: 14px; }
 .byline a { color: var(--text-faint); text-decoration: none; }
+/* an author's own page: the name stays a name, underlined on hover */
+.byline .author > a { color: inherit; }
+.byline .author > a:hover { text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
 .dateline { margin-top: 6px; font: 400 14px var(--mono); color: var(--text-faint); }
 .dateline a { color: var(--link); text-decoration: none; }
 .doi.pending { color: var(--text-ghost); }

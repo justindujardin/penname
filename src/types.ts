@@ -12,6 +12,9 @@ export interface Author {
   name: string;
   affiliation?: string;
   email?: string;
+  /** The author's own page. The name becomes the link and keeps looking
+   * like a name; a quieter way home than a `home` link above the masthead. */
+  link?: string;
 }
 
 /** One entry of a masthead's link row (`links` in the frontmatter). */

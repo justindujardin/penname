@@ -19,13 +19,17 @@ export function headHtml(
 <link rel="stylesheet" href="${prefix}${cssHref}">`;
 }
 
+const escText = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const escAttr = (s: string) => escText(s).replace(/"/g, "&quot;");
+
 export function authorsHtml(fm: Frontmatter): string {
   return (
     (fm.authors ?? [])
       .map((a) => {
+        const name = a.link ? `<a href="${escAttr(a.link)}" target="_blank" rel="noopener">${a.name}</a>` : a.name;
         const affil = a.affiliation ? `<span class="affil"> · ${a.affiliation}</span>` : "";
         const email = a.email ? `<span class="affil"> · <a href="mailto:${a.email}">${a.email}</a></span>` : "";
-        return `<span class="author">${a.name}${affil}${email}</span>`;
+        return `<span class="author">${name}${affil}${email}</span>`;
       })
       .join("") + (fm.credit ? `<div class="credit">${fm.credit}</div>` : "")
   );
@@ -41,9 +45,6 @@ export interface MastheadOptions {
   /** Print: link labels carry their address, since paper cannot be clicked. */
   print?: boolean;
 }
-
-const escText = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-const escAttr = (s: string) => escText(s).replace(/"/g, "&quot;");
 
 /** An address as a person would type it, without the scheme, a mailto
  * prefix, or a trailing slash. Print shows it beside a link's label. */

@@ -44,6 +44,7 @@ main { max-width: none; }
 .byline .author + .author::before { content: " · "; color: var(--text-ghost); }
 .affil { font-size: 8.5pt; color: var(--text-faint); }
 .byline a { color: var(--text-faint); text-decoration: none; }
+.byline .author > a { color: inherit; }
 .dateline { text-align: center; font: 400 8.5pt var(--mono); color: var(--text-faint); margin-top: 4pt; }
 .dateline a { color: var(--link); text-decoration: none; }
 .credit { text-align: center; font-size: 9pt; color: var(--text-faint); font-style: italic; margin-top: 2pt; }
