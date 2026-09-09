@@ -10,7 +10,7 @@
  * web theme uses ship in assets/fonts. See docs/social.md.
  */
 
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -141,6 +141,25 @@ export interface FigureSvg {
   viewBox: string;
 }
 
+const MIME_BY_EXT: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+
+/** A photo in the figure's place: the file embedded as a data URI, clipped
+ * to a circle, filling the box the way a chart would. */
+export function portraitSvg(path: string): FigureSvg {
+  const ext = extname(path).slice(1).toLowerCase();
+  const mime = MIME_BY_EXT[ext];
+  if (!mime) throw new Error(`portrait ${path}: expected a jpg, png, or webp`);
+  const data = readFileSync(path).toString("base64");
+  const size = 440;
+  return {
+    viewBox: `0 0 ${size} ${size}`,
+    inner:
+      `<clipPath id="portrait-clip"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}"/></clipPath>` +
+      `<image href="data:${mime};base64,${data}" x="0" y="0" width="${size}" height="${size}" ` +
+      `preserveAspectRatio="xMidYMid slice" clip-path="url(#portrait-clip)"/>`,
+  };
+}
+
 /** The first <svg>…</svg> of a rendered figure, with its viewBox. Renderers
  * wrap the chart in HTML chrome (a title line, readouts, preset chips) that
  * the card leaves behind; nested <svg> elements are kept whole. Null when
@@ -208,11 +227,14 @@ export function wrapTitle(
 }
 
 export interface CardInput {
+  /** Empty for no eyebrow. */
   kicker: string;
   title: string;
   /** Tried in the title's place when the title would be truncated. */
   shortTitle?: string;
   byline?: string;
+  /** Wrapped under the byline (or in its place) at the byline's size. */
+  tagline?: string;
   /** The site's host name, printed at the foot of the card. */
   host: string;
   /** Theme tokens (--bg, --text, …) as rootTokens reads them; a missing one
@@ -249,14 +271,23 @@ export function cardSvg(c: CardInput): string {
     .map((l, i) => `<tspan x="${pad}" y="${(firstBase + i * lineH).toFixed(1)}">${escText(l)}</tspan>`)
     .join("");
   const bylineY = firstBase + (wrap.lines.length - 1) * lineH + 54;
+  const subLines: string[] = [];
+  if (c.byline) subLines.push(c.byline);
+  if (c.tagline) subLines.push(...wrapTitle(c.tagline, colW, [26], 3).lines);
+  const sub = subLines
+    .map(
+      (l, i) =>
+        `<text x="${pad}" y="${(bylineY + i * 36).toFixed(1)}" font-family="IBM Plex Sans" font-size="26" fill="${t("text-dim")}">${escText(l)}</text>`,
+    )
+    .join("\n");
   const fig = c.figure
     ? `<svg x="640" y="45" width="488" height="540" viewBox="${escAttr(c.figure.viewBox)}" preserveAspectRatio="xMidYMid meet">${c.figure.inner}</svg>`
     : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_W}" height="${CARD_H}" viewBox="0 0 ${CARD_W} ${CARD_H}">
 <rect width="${CARD_W}" height="${CARD_H}" fill="${t("bg")}"/>
-<text x="${pad}" y="118" font-family="IBM Plex Mono" font-size="22" letter-spacing="4" fill="${t("link")}">${escText(c.kicker.toUpperCase())}</text>
+${c.kicker ? `<text x="${pad}" y="118" font-family="IBM Plex Mono" font-size="22" letter-spacing="4" fill="${t("link")}">${escText(c.kicker.toUpperCase())}</text>` : ""}
 <text font-family="IBM Plex Sans" font-weight="600" font-size="${wrap.size}" letter-spacing="-0.5" fill="${t("text")}">${titleLines}</text>
-${c.byline ? `<text x="${pad}" y="${bylineY.toFixed(1)}" font-family="IBM Plex Sans" font-size="26" fill="${t("text-dim")}">${escText(c.byline)}</text>` : ""}
+${sub}
 <line x1="${pad}" y1="536" x2="${pad + 56}" y2="536" stroke="${t("border")}" stroke-width="2"/>
 <text x="${pad}" y="574" font-family="IBM Plex Mono" font-size="22" fill="${t("text-faint")}">${escText(c.host)}</text>
 ${fig}
@@ -302,6 +333,10 @@ export interface CardJob {
   title: string;
   shortTitle?: string;
   byline?: string;
+  tagline?: string;
+  /** Repo-relative photo, placed where a figure would go when the social
+   * block names neither a figure nor an image. */
+  portrait?: string;
   host: string;
   /** The page's stylesheet text, for the theme tokens. */
   webCss: string;
@@ -324,6 +359,7 @@ export function buildCard(job: CardJob): BuiltCard {
     return { path };
   }
   let figure: FigureSvg | null = null;
+  if (social?.figure === undefined && job.portrait) figure = portraitSvg(join(job.root, job.portrait));
   if (social?.figure !== undefined) {
     if (!job.vocabulary) throw new Error(`${job.source}: social.figure needs a vocabulary in the build config`);
     const json = typeof social.figure === "string" ? social.figure : JSON.stringify(social.figure);
@@ -340,6 +376,7 @@ export function buildCard(job: CardJob): BuiltCard {
     title: social?.title ?? job.title,
     shortTitle: social?.title ? undefined : job.shortTitle,
     byline: job.byline,
+    tagline: job.tagline,
     host: job.host,
     tokens: rootTokens(job.webCss),
     figure,

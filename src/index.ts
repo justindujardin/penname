@@ -19,6 +19,7 @@ export {
   type PracticeGenerator,
   type PracticeProblem,
 } from "./practice.js";
+export { CARD_STATUSES, type CardEntry, type CardLink, type CardStatus, cardsHtml, cardsPass } from "./cards.js";
 export { embedPass } from "./embeds.js";
 export { listingHtml, listingsForPdf, splitRegions } from "./listings.js";
 export { buildNote, type BuildResult, type NoteConfig } from "./note.js";
@@ -33,6 +34,7 @@ export {
   cardSvg,
   descriptionFrom,
   extractSvg,
+  portraitSvg,
   renderCardPng,
   rootTokens,
   socialHead,
@@ -42,13 +44,15 @@ export {
   wrapTitle,
 } from "./social.js";
 export { articlePasses, headingAnchorPass, makeHighlighter, Pipeline } from "./pipeline.js";
-export { authorsHtml, headHtml, mastheadHtml, splitFrontmatter } from "./shell.js";
+export { authorsHtml, headHtml, mastheadHtml, type MastheadOptions, splitFrontmatter } from "./shell.js";
 export { slugify, tocFloatHtml, tocHtml } from "./toc.js";
 export {
   DEFAULT_FONTS_HREF,
   DEFAULT_PDF_CHAR_SUBS,
   type Author,
   type Frontmatter,
+  type HomeLink,
+  type MastheadLink,
   type Ref,
   type SocialSpec,
   type TocEntry,

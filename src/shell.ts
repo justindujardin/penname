@@ -2,7 +2,7 @@
 
 import { parse as parseYaml } from "yaml";
 
-import { DEFAULT_FONTS_HREF, type Frontmatter } from "./types.js";
+import { DEFAULT_FONTS_HREF, type Frontmatter, type HomeLink, type MastheadLink } from "./types.js";
 
 export function headHtml(
   title: string,
@@ -21,7 +21,7 @@ export function headHtml(
 
 export function authorsHtml(fm: Frontmatter): string {
   return (
-    fm.authors
+    (fm.authors ?? [])
       .map((a) => {
         const affil = a.affiliation ? `<span class="affil"> · ${a.affiliation}</span>` : "";
         const email = a.email ? `<span class="affil"> · <a href="mailto:${a.email}">${a.email}</a></span>` : "";
@@ -31,7 +31,51 @@ export function authorsHtml(fm: Frontmatter): string {
   );
 }
 
-export function mastheadHtml(fm: Frontmatter, opts: { kicker: string; pdfName?: string }): string {
+export interface MastheadOptions {
+  /** Eyebrow when the frontmatter has none. A person's masthead ignores it. */
+  kicker: string;
+  /** Adds a PDF link to the dateline; the print shell passes none. */
+  pdfName?: string;
+  /** The site this page belongs to: a small link above everything else. */
+  home?: HomeLink;
+  /** Print: link labels carry their address, since paper cannot be clicked. */
+  print?: boolean;
+}
+
+const escText = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const escAttr = (s: string) => escText(s).replace(/"/g, "&quot;");
+
+/** An address as a person would type it, without the scheme, a mailto
+ * prefix, or a trailing slash. Print shows it beside a link's label. */
+export const displayHref = (href: string) => href.replace(/^mailto:/, "").replace(/^https?:\/\//, "").replace(/\/$/, "");
+
+function homeHtml(home: HomeLink | undefined): string {
+  return home ? `<a class="home" href="${escAttr(home.href)}">${escText(home.label)}</a>\n` : "";
+}
+
+function linksHtml(links: MastheadLink[] | undefined, print: boolean): string {
+  if (!links?.length) return "";
+  const items = links.map((l) => {
+    const ext = /^https?:/.test(l.href) ? ' target="_blank" rel="noopener"' : "";
+    const url = print ? ` <span class="link-url">${escText(displayHref(l.href))}</span>` : "";
+    return `<a href="${escAttr(l.href)}"${ext}>${escText(l.label)}${url}</a>`;
+  });
+  return `\n<nav class="masthead-links">${items.join("")}</nav>`;
+}
+
+export function mastheadHtml(fm: Frontmatter, opts: MastheadOptions): string {
+  const tagline = fm.tagline ? `\n<p class="tagline">${escText(fm.tagline)}</p>` : "";
+  const links = linksHtml(fm.links, opts.print ?? false);
+  if (fm.portrait) {
+    // a person: the portrait beside the name, the tagline, the links; no
+    // byline, dateline, or abstract, and an eyebrow only if one is written
+    return `<header class="masthead masthead-person" id="top">
+${homeHtml(opts.home)}<img class="portrait" src="${escAttr(fm.portrait)}" alt="${escAttr(fm.title)}">
+<div class="masthead-text">${fm.kicker ? `\n<div class="kicker">${fm.kicker}</div>` : ""}
+<h1 class="doc-title">${fm.title}</h1>${tagline}${links}
+</div>
+</header>`;
+  }
   // The dateline shows only what the frontmatter declares: a date if there
   // is one; a DOI link if `doi` is set, "DOI pending" if it is declared but
   // empty, nothing at all if the key is absent; the PDF link if a PDF is
@@ -42,10 +86,10 @@ export function mastheadHtml(fm: Frontmatter, opts: { kicker: string; pdfName?: 
   else if (fm.doi === "") parts.push(`<span class="doi pending">DOI pending</span>`);
   if (opts.pdfName) parts.push(`<a target="_blank" rel="noopener" href="${opts.pdfName}">PDF</a>`);
   return `<header class="masthead" id="top">
-<div class="kicker">${fm.kicker ?? opts.kicker}</div>
-<h1 class="doc-title">${fm.title}</h1>
+${homeHtml(opts.home)}<div class="kicker">${fm.kicker ?? opts.kicker}</div>
+<h1 class="doc-title">${fm.title}</h1>${tagline}
 <div class="byline">${authorsHtml(fm)}</div>
-${parts.length ? `<div class="dateline">${parts.join(" · ")}</div>` : ""}
+${parts.length ? `<div class="dateline">${parts.join(" · ")}</div>` : ""}${links}
 ${fm.abstract ? `<div class="abstract"><span class="abs-label">Abstract</span> ${fm.abstract.trim()}</div>` : ""}
 </header>`;
 }
@@ -76,9 +120,9 @@ export interface PanelNav {
   searchIndex?: string;
   /** Show the nicknames switch (needs a glossary and the runtime). */
   plainToggle?: boolean;
+  /** The site this book belongs to, above the brand. */
+  home?: HomeLink;
 }
-
-const escText = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
 /** The left nav of a panel-layout page: brand, search, the chapter groups,
  * and the appendix links. The consumer's hydrate entry calls
@@ -107,7 +151,8 @@ export function panelNavHtml(nav: PanelNav): string {
     : "";
   return (
     `<nav class="side" aria-label="site">` +
-    `<div class="side-head"><a class="side-brand" href="${nav.prefix || "./"}">${escText(nav.brand)}</a>` +
+    `<div class="side-head">${nav.home ? `<a class="home" href="${escAttr(nav.home.href)}">${escText(nav.home.label)}</a>` : ""}` +
+    `<a class="side-brand" href="${nav.prefix || "./"}">${escText(nav.brand)}</a>` +
     `${nav.kicker ? `<div class="side-kicker">${escText(nav.kicker)}</div>` : ""}` +
     `<button class="side-toggle" type="button" aria-expanded="false">menu</button></div>` +
     search +

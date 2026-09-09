@@ -48,6 +48,7 @@ import { tocHtml } from "./toc.js";
 import {
   DEFAULT_PDF_CHAR_SUBS,
   type Frontmatter,
+  type HomeLink,
   type Ref,
   type SocialSpec,
   type TocEntry,
@@ -115,6 +116,9 @@ export interface BookConfig {
    * shared by the chapters unless one carries its own (see social.ts). */
   site?: string;
   kicker?: string;
+  /** The site this book belongs to: a small link above the masthead and
+   * in the panel's brand line. */
+  home?: HomeLink;
   colophon?: string;
   pdfName?: string;
   pdfCharSubs?: [string, string][];
@@ -296,6 +300,7 @@ export async function buildBook(cfg: BookConfig): Promise<{ chapters: number; pd
       groups: navGroups(current),
       searchIndex: "assets/search.json",
       plainToggle: glossary.some((e) => e.nickname),
+      home: cfg.home,
     });
     return `<body class="panel">${nav}<div class="content"><main class="wrap">${main}</main></div>${hydrateTag(prefix)}</body>`;
   };
@@ -317,7 +322,7 @@ export async function buildBook(cfg: BookConfig): Promise<{ chapters: number; pd
   writeFileSync(
     join(dist, "index.html"),
     `<!doctype html><html lang="en"><head>${headHtml(fm.short_title, "assets/web.css", { meta: pageHead("", fm.social?.title ?? fm.title, bookDescription) })}</head>
-${shell("", "", `${mastheadHtml(fm, { kicker, pdfName })}
+${shell("", "", `${mastheadHtml(fm, { kicker, pdfName, home: cfg.home })}
 <article class="book-intro">${(() => { const t = withTerms(chapterRefPass(conceptLinkPass(conceptBacklinkPass(intro, "", ""), "concepts/"), ""), ""); return t.html + t.script; })()}</article>
 ${actsHtml}
 ${conceptStore ? (callouts ? appendixIndexHtml(conceptStore, uses, labelFor, "concepts/") : conceptIndexHtml(conceptStore, conceptState, labelFor)) : ""}${colophon}`)}</html>`,
@@ -450,7 +455,7 @@ ${glossaryListHtml(glossary, (slug) => `../concepts/${slug}/`)}`)}</html>`,
   writeFileSync(
     join(dist, "pdf.html"),
     `<!doctype html><html lang="en"><head>${headHtml(fm.short_title, "assets/pdf.css")}</head>
-<body><main>${mastheadHtml(fm, { kicker, pdfName })}
+<body><main>${mastheadHtml(fm, { kicker, print: true })}
 ${pdfIntro}
 ${toc.pdf ? tocHtml(tocEntries, toc.depth ?? 2) : ""}
 <article>${pdfArticle}</article></main></body></html>`,

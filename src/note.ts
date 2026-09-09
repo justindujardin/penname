@@ -19,8 +19,8 @@
  * mentions ("Section 3.2") are strict links — see sectionRefPass.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import * as esbuild from "esbuild";
 
@@ -33,6 +33,7 @@ import {
   loadConcepts,
   unpackPass,
 } from "./course.js";
+import { cardsPass } from "./cards.js";
 import { embedPass } from "./embeds.js";
 import { annotateTerms, type GlossaryMarks, glossaryListHtml, glossaryScript, loadGlossary } from "./glossary.js";
 import { listingsForPdf } from "./listings.js";
@@ -45,6 +46,7 @@ import { tocFloatHtml, tocHtml } from "./toc.js";
 import {
   DEFAULT_PDF_CHAR_SUBS,
   type Frontmatter,
+  type HomeLink,
   type Ref,
   type TocEntry,
   type TocOptions,
@@ -95,6 +97,10 @@ export interface NoteConfig {
   site?: string;
   /** Masthead eyebrow when the frontmatter has no kicker. */
   kicker?: string;
+  /** The site this note belongs to, e.g. `{ label: "Justin DuJardin",
+   * href: "https://justindujardin.com" }`: a small link above the
+   * masthead on the web. */
+  home?: HomeLink;
   /** Footer line on the web page. */
   colophon?: string;
   /** Fallback PDF filename when the frontmatter has no pdf_name. */
@@ -180,7 +186,8 @@ export async function buildNote(cfg: NoteConfig): Promise<BuildResult> {
   });
 
   const conceptState = new ConceptState();
-  let expanded = embedPass(body, cfg.root);
+  const cards = cardsPass(embedPass(body, cfg.root), cfg.root);
+  let expanded = cards.md;
   if (cfg.concepts?.length)
     expanded = conceptPass(expanded, loadConcepts(cfg.root, cfg.concepts), conceptState, {
       practice: cfg.practice,
@@ -262,6 +269,13 @@ export async function buildNote(cfg: NoteConfig): Promise<BuildResult> {
   // ── images + the PDF variant of the article ──────────────────────────
   mkdirSync(dist, { recursive: true });
   const snapshotStems = cfg.imagesDir ? copyImages(join(cfg.root, cfg.imagesDir), webArticle, dist) : [];
+  // pictures named by path (the portrait, card images) ship at that path
+  if (fm.portrait && !existsSync(join(cfg.root, fm.portrait)))
+    throw new Error(`${cfg.source}: portrait "${fm.portrait}" does not exist`);
+  for (const rel of [...(fm.portrait ? [fm.portrait] : []), ...cards.images]) {
+    mkdirSync(dirname(join(dist, rel)), { recursive: true });
+    copyFileSync(join(cfg.root, rel), join(dist, rel));
+  }
   for (const [from, to] of cfg.pdfCharSubs ?? DEFAULT_PDF_CHAR_SUBS) pdfArticle = pdfArticle.replaceAll(from, to);
   for (const stem of snapshotStems) pdfArticle = pdfArticle.replaceAll(`images/${stem}.svg`, `images/${stem}.png`);
 
@@ -270,7 +284,8 @@ export async function buildNote(cfg: NoteConfig): Promise<BuildResult> {
     cfg.toc === false ? { pdf: false, web: false } : { pdf: true, web: false, depth: 2, ...cfg.toc };
   const pdfName = fm.pdf_name ?? cfg.pdfName ?? "document.pdf";
   const kicker = cfg.kicker ?? "a technical report";
-  const titleBlock = mastheadHtml(fm, { kicker, pdfName });
+  const webTitleBlock = mastheadHtml(fm, { kicker, pdfName, home: cfg.home });
+  const pdfTitleBlock = mastheadHtml(fm, { kicker, print: true });
   const webMode = toc.web === true ? "inline" : toc.web || "none";
   const webToc = webMode === "inline" ? tocHtml(headings, toc.depth ?? 2) : "";
   const floatToc =
@@ -297,10 +312,12 @@ export async function buildNote(cfg: NoteConfig): Promise<BuildResult> {
         out: stem === "index" ? "social.png" : `${stem}.social.png`,
         social: fm.social,
         vocabulary: cfg.vocabulary,
-        kicker: fm.kicker ?? kicker,
+        kicker: fm.kicker ?? (fm.portrait ? "" : kicker),
         title: fm.title,
         shortTitle: fm.short_title,
         byline: (fm.authors ?? []).map((a) => a.name).join(" · "),
+        tagline: fm.tagline,
+        portrait: fm.portrait,
         host: new URL(siteUrl).host,
         webCss: readFileSync(join(dist, "assets", "web.css"), "utf-8"),
         source: cfg.source,
@@ -310,21 +327,21 @@ export async function buildNote(cfg: NoteConfig): Promise<BuildResult> {
     site: siteUrl,
     page: htmlName === "index.html" ? "" : htmlName,
     title: fm.social?.title ?? fm.title,
-    description: fm.social?.description ?? descriptionFrom(fm.abstract),
+    description: fm.social?.description ?? descriptionFrom(fm.abstract ?? fm.tagline),
     image: card,
   });
 
   writeFileSync(
     join(dist, htmlName),
     `<!doctype html><html lang="en"><head>${headHtml(fm.short_title, "assets/web.css", { meta })}</head>
-<body>${floatToc}<main class="wrap">${titleBlock}${webToc}<article>${webArticle}</article>${colophon}
+<body>${floatToc}<main class="wrap">${webTitleBlock}${webToc}<article>${webArticle}</article>${colophon}
 </main>${hydrateTag}</body></html>`,
   );
 
   writeFileSync(
     join(dist, pdfHtmlName),
     `<!doctype html><html lang="en"><head>${headHtml(fm.short_title, "assets/pdf.css")}</head>
-<body><main>${titleBlock}${pdfToc}<article>${pdfArticle}</article></main></body></html>`,
+<body><main>${pdfTitleBlock}${pdfToc}<article>${pdfArticle}</article></main></body></html>`,
   );
 
   if (cfg.hydrate) {
@@ -341,6 +358,7 @@ export async function buildNote(cfg: NoteConfig): Promise<BuildResult> {
     `web   : dist/${htmlName}  (${pipeline.citeOrder.length} refs, ${pipeline.mathCount} math spans` +
       (blocks.length ? `, ${blocks.length} background folds` : "") +
       (listings.count ? `, ${listings.count} listings` : "") +
+      (cards.count ? `, ${cards.count} cards` : "") +
       (glossary.length ? `, ${glossary.length} glossary terms` : "") +
       (conceptState.first.size ? `, ${conceptState.first.size} concepts (${conceptState.repeats.length} recaps)` : "") +
       (unpackCount ? `, ${unpackCount} unpack folds` : "") +

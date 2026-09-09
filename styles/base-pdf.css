@@ -59,6 +59,32 @@ main { max-width: none; }
 }
 .abs-label { font: 500 7.5pt var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-right: 5pt; }
 
+.home { display: none; }
+
+/* a person's masthead, centered like a report's; links print their address */
+.portrait { display: block; width: 62pt; height: 62pt; border-radius: 50%; object-fit: cover; margin: 0 auto 8pt; }
+.tagline { text-align: center; font-size: 10pt; color: var(--text-dim); margin: 4pt 24pt 0; }
+.masthead-links { text-align: center; font: 400 8.5pt var(--mono); color: var(--text-faint); margin-top: 6pt; }
+.masthead-links a { color: var(--text-dim); text-decoration: none; }
+.masthead-links a + a::before { content: " · "; color: var(--text-ghost); }
+.link-url { color: var(--link); }
+
+/* ── cards print as a list: title and status on one line, the blurb and
+   the meta beneath, no pictures ── */
+.cards { margin: 4pt 0 10pt; }
+.card { padding: 5pt 0 6pt; border-bottom: 0.5pt solid var(--border); page-break-inside: avoid; }
+.card:last-child { border-bottom: 0; }
+.card-image { display: none; }
+.card-head { display: flex; align-items: baseline; gap: 6pt; }
+.card-title { margin: 0; font: 600 10.5pt var(--sans); }
+.card-title a { color: var(--text); text-decoration: none; }
+.card-status { font: 500 6.5pt var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
+.card-blurb { margin: 1pt 0 0; font-size: 9.3pt; line-height: 1.45; color: var(--text-dim); text-align: left; }
+.card-meta { margin-top: 1.5pt; font: 400 8pt var(--mono); color: var(--text-faint); }
+.card-meta > * + *::before { content: " · "; color: var(--text-ghost); }
+.card-meta a { color: var(--link); text-decoration: none; }
+.card-meta .link-url { color: var(--text-faint); }
+
 /* ── contents: WeasyPrint resolves the page numbers ── */
 .toc { margin: 16pt 26pt 4pt; }
 .toc-title { font: 500 7.5pt var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 5pt; }

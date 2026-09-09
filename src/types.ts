@@ -14,6 +14,20 @@ export interface Author {
   email?: string;
 }
 
+/** One entry of a masthead's link row (`links` in the frontmatter). */
+export interface MastheadLink {
+  label: string;
+  href: string;
+}
+
+/** The site a page belongs to (`home` in the build config): a small link
+ * above the masthead, and in a panel book's brand line. A site that is
+ * the home itself sets none. */
+export interface HomeLink {
+  label: string;
+  href: string;
+}
+
 /** YAML frontmatter of a document (a note's markdown file, or a book's
  * book.md). */
 export interface Frontmatter {
@@ -22,13 +36,23 @@ export interface Frontmatter {
   /** Masthead eyebrow line; falls back to the project config, then to
    * "a technical report". */
   kicker?: string;
-  authors: Author[];
+  authors?: Author[];
   /** Non-author collaboration credit, rendered in the byline. */
   credit?: string;
-  date: string;
+  date?: string;
   doi?: string;
   pdf_name?: string;
-  abstract: string;
+  abstract?: string;
+  /** One line under the title in sentence style (a person's page says who
+   * they are here). Also the social card's text when there is no byline,
+   * and the meta description when there is no abstract. */
+  tagline?: string;
+  /** A picture beside the masthead text, repo-relative. Setting it makes
+   * the masthead a person's: portrait, name, tagline, links; no byline,
+   * dateline, or abstract, and no eyebrow unless `kicker` is set. */
+  portrait?: string;
+  /** A row of links under the masthead text: GitHub, Bluesky, email. */
+  links?: MastheadLink[];
   /** The social preview card (see social.ts). Needs `site` in the build config. */
   social?: SocialSpec;
 }
