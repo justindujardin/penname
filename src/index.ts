@@ -36,6 +36,7 @@ export {
   extractSvg,
   portraitSvg,
   renderCardPng,
+  renderSvgPng,
   rootTokens,
   socialHead,
   socialMetaHtml,

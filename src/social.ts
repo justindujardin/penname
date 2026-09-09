@@ -298,8 +298,14 @@ ${fig}
  * so every machine renders the same bytes. Generic families in a figure's
  * own text map onto the same faces. */
 export function renderCardPng(svg: string): Buffer {
+  return renderSvgPng(svg, CARD_W);
+}
+
+/** The same rasterizer for any picture composed the way the card is: a
+ * banner, a favicon, a figure shipped as a file. */
+export function renderSvgPng(svg: string, width: number): Buffer {
   const r = new Resvg(svg, {
-    fitTo: { mode: "width", value: CARD_W },
+    fitTo: { mode: "width", value: width },
     font: {
       fontFiles: FONT_FILES,
       loadSystemFonts: false,
