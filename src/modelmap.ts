@@ -6,14 +6,15 @@
  * script, so a browser control (a depth stepper) can re-lay the same graph
  * without a server round trip, and the PDF gets the identical geometry.
  *
- * The semantic passes are local — depth projection, template folding
+ * Two halves. The semantic passes — depth projection, template folding
  * (`blocks.0..7` → one ×8 card or one opened interior), transitive
  * reduction of pseudo-source edges only (a residual skip is a finding,
- * not clutter) — and the geometry is dagre's compound layered layout,
- * which owns ranking, ordering, coordinates and cluster boxes.
+ * not clutter) — decide what is on screen. The geometry is a layered
+ * layout in model order: siblings keep the order they fire in and each
+ * open container owns one contiguous span, so opening a card moves
+ * nothing beside it and a reader's eye can hold the picture across
+ * clicks.
  */
-
-import dagre from "@dagrejs/dagre";
 
 // ── the JSON contract (mirrors py/limned.py) ────────────────────────────
 
@@ -96,6 +97,8 @@ export interface PlacedNode {
   y: number;
   w: number;
   h: number;
+  /** Row in the layered layout; ports sit on row 0. */
+  rank: number;
   /** Tooltip lines: full path, shapes, docs, parameter counts. */
   detail: string[];
 }
@@ -134,9 +137,6 @@ export interface Hull {
   /** Label size multiplier, 1..~1.5 — a group holding more reads
    * louder, within reason. */
   scale: number;
-  /** True when the box would collide with foreign cards and only the
-   * label is drawn — collapse stays clickable either way. */
-  bare?: boolean;
   x: number;
   y: number;
   w: number;
@@ -177,7 +177,8 @@ export interface MapOptions {
   templates?: boolean;
   /** Deprecated alias for `templates`. */
   collapse?: boolean;
-  /** Frame width the ranks wrap to. Default 960. */
+  /** Frame width a narrower graph is centered in; a wider graph keeps
+   * its natural width. */
   width?: number;
 }
 
@@ -518,13 +519,21 @@ export function layoutModelmap(graph: Limned, opts: MapOptions): ModelLayout {
       .filter((p) => p.consumed && !hide.has(p.name))
       .map((p) => ({ id: `buffer:${p.name}`, port: p, kind: "buffer" as const })),
   ];
+  // Ports of one structured argument share its name as a prefix
+  // (`observations.node_features`); the row shows the part that differs.
+  const portNames = ports.map((p) => p.port.name);
+  let common = portNames.length > 1 ? portNames[0] : "";
+  for (const name of portNames) {
+    while (common && !name.startsWith(common)) common = common.slice(0, -1);
+  }
+  common = common.slice(0, common.lastIndexOf(".") + 1);
   const seenPorts = new Set<string>();
   for (const { id, port, kind } of ports) {
     if (seenPorts.has(id)) continue;
     seenPorts.add(id);
     vnodes.set(id, {
       id,
-      label: port.name,
+      label: port.name.slice(common.length) || port.name,
       sub: `[${port.shape.join("×")}]`,
       kind,
       dormant: false,
@@ -638,166 +647,372 @@ export function layoutModelmap(graph: Limned, opts: MapOptions): ModelLayout {
     if (groups.size === 1) vn.group = [...groups][0];
   }
 
-  // ── geometry: dagre's compound layered layout ─────────────────────────
-  // Ranking, ordering, coordinates and cluster boxes all come from
-  // dagre. Clusters are exclusive regions with their own margins, which
-  // is the property the hand-rolled hulls kept violating: a card can
-  // sit inside a family box or beside it, never under its border line.
+  // ── geometry: a model-order column layout ─────────────────────────────
+  // Ranks come from the longest path through the visible module graph,
+  // then each module moves as late as its consumers allow, so a side
+  // branch sits beside the module that reads it instead of at the top.
+  // Siblings keep execution order and each open container owns one
+  // contiguous span, so a hull can never overlap a foreign card and
+  // opening a subtree moves nothing that is not underneath it.
   const nodes = [...vnodes.values()];
   for (const vn of nodes) {
     const chars = Math.max(vn.label.length, vn.sub.length * 0.92);
     vn.w = Math.max(64, chars * CHAR_W + 2 * PAD_X) * vn.scale;
     vn.h = vn.h * vn.scale;
   }
+  const isPort = (vn: VNode) => vn.kind === "input" || vn.kind === "buffer";
+  const modules = nodes.filter((vn) => !isPort(vn));
+  const moduleIds = new Set(modules.map((vn) => vn.id));
+  const moduleEdges = edges.filter((e) => moduleIds.has(e.src) && moduleIds.has(e.dst));
 
-  const g = new dagre.graphlib.Graph({ compound: true });
-  g.setGraph({ rankdir: "TB", nodesep: 16, ranksep: 46, marginx: 12, marginy: 10 });
-  g.setDefaultEdgeLabel(() => ({}));
-  for (const vn of nodes) g.setNode(vn.id, { width: vn.w, height: vn.h });
-
-  // Only templates are real dagre clusters. A family cluster buys a
-  // grey wash at the cost of an exclusive column — dagre strands its
-  // few members in an empty box and shoves everything else sideways.
-  // Templates are tight (contiguous ranks, exclusive members), so the
-  // cluster machinery earns its keep exactly there.
-  const clusters: { id: string; label: string; kind: "family" | "template" }[] = [];
-  for (const t of templateHulls) {
-    const kids = nodes.filter((vn) => vn.id.startsWith(t.id + "."));
-    if (kids.length < 2) continue;
-    const id = `cluster:${t.id}`;
-    g.setNode(id, {});
-    clusters.push({ id, label: t.label, kind: "template" });
-    for (const vn of kids) g.setParent(vn.id, id);
+  // Back edges (a loop the extractor saw) are left out of the ranking and
+  // drawn as bows; the walk is in execution order so the loop's first
+  // firing module ranks first.
+  const succ = new Map<string, string[]>();
+  const pred = new Map<string, string[]>();
+  for (const e of moduleEdges) {
+    (succ.get(e.src) ?? succ.set(e.src, []).get(e.src)!).push(e.dst);
+    (pred.get(e.dst) ?? pred.set(e.dst, []).get(e.dst)!).push(e.src);
   }
-  // Open virtual groups cluster too — that is the routed-together look:
-  // dagre keeps a pathway's cards adjacent and boxes them tightly.
-  const virtualOpen = new Set<string>();
-  for (const vn of nodes) {
+  const back = new Set<string>();
+  {
+    const state = new Map<string, 1 | 2>();
+    const walk = (id: string) => {
+      state.set(id, 1);
+      for (const next of succ.get(id) ?? []) {
+        const s = state.get(next);
+        if (s === 1) back.add(`${id}→${next}`);
+        else if (!s) walk(next);
+      }
+      state.set(id, 2);
+    };
+    for (const vn of [...modules].sort((a, b) => a.order - b.order)) {
+      if (!state.has(vn.id)) walk(vn.id);
+    }
+  }
+  const forward = (src: string, dst: string) => !back.has(`${src}→${dst}`);
+
+  // Longest path from the sources, then as-late-as-possible.
+  const rank = new Map<string, number>();
+  const topo: string[] = [];
+  {
+    const done = new Set<string>();
+    const visit = (id: string) => {
+      if (done.has(id)) return;
+      done.add(id);
+      for (const p of pred.get(id) ?? []) if (forward(p, id)) visit(p);
+      topo.push(id);
+    };
+    for (const vn of [...modules].sort((a, b) => a.order - b.order)) visit(vn.id);
+  }
+  for (const id of topo) {
+    let r = 1;
+    for (const p of pred.get(id) ?? []) if (forward(p, id)) r = Math.max(r, rank.get(p)! + 1);
+    rank.set(id, r);
+  }
+  for (const id of [...topo].reverse()) {
+    const outs = (succ.get(id) ?? []).filter((d) => forward(id, d));
+    if (outs.length) rank.set(id, Math.min(...outs.map((d) => rank.get(d)!)) - 1);
+  }
+  const minRank = Math.min(...[...rank.values()], 1);
+  for (const [id, r] of rank) rank.set(id, r - minRank + 1);
+  for (const vn of nodes) vn.rank = isPort(vn) ? 0 : rank.get(vn.id) ?? 1;
+
+  // ── the span tree: every id prefix that is open is a container ────────
+  interface Item {
+    id: string;
+    label: string;
+    kind: "leaf" | "template" | "family";
+    node?: VNode;
+    children: Item[];
+    leaves: VNode[];
+    rmin: number;
+    rmax: number;
+    order: number;
+    w: number;
+    x: number;
+    col: number;
+    span: number;
+    columns: { w: number; x: number }[];
+    depth: number;
+  }
+  const item = (id: string, kind: Item["kind"], label: string, depth: number): Item => ({
+    id, label, kind, children: [], leaves: [], rmin: Infinity, rmax: -Infinity,
+    order: Number.MAX_SAFE_INTEGER, w: 0, x: 0, col: 0, span: 1, columns: [], depth,
+  });
+  const templateLabel = new Map(templateHulls.map((t) => [t.id, t.label]));
+  const root = item("", "family", "", 0);
+  const byPath = new Map<string, Item>([["", root]]);
+  for (const vn of [...modules].sort((a, b) => a.order - b.order)) {
     const parts = vn.id.split(".");
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (parts[i].startsWith("§")) {
-        virtualOpen.add(parts.slice(0, i + 1).join("."));
+    let at = root;
+    for (let i = 1; i < parts.length; i++) {
+      const path = parts.slice(0, i).join(".");
+      let next = byPath.get(path);
+      if (!next) {
+        const last = parts[i - 1];
+        next = item(
+          path,
+          path.endsWith(".*") ? "template" : "family",
+          templateLabel.get(path) ?? pretty(last),
+          at.depth + 1,
+        );
+        byPath.set(path, next);
+        at.children.push(next);
+      }
+      at = next;
+    }
+    const leaf = item(vn.id, "leaf", vn.label, at.depth + 1);
+    leaf.node = vn;
+    leaf.w = vn.w;
+    byPath.set(vn.id, leaf);
+    at.children.push(leaf);
+  }
+  const summarize = (it: Item): void => {
+    if (it.node) {
+      it.leaves = [it.node];
+      it.rmin = it.rmax = it.node.rank;
+      it.order = it.node.order;
+      return;
+    }
+    for (const c of it.children) {
+      summarize(c);
+      it.leaves.push(...c.leaves);
+      it.rmin = Math.min(it.rmin, c.rmin);
+      it.rmax = Math.max(it.rmax, c.rmax);
+      it.order = Math.min(it.order, c.order);
+    }
+    it.children.sort((a, b) => a.order - b.order);
+  };
+  summarize(root);
+
+  const HULL_PAD = 10;
+  const COL_GAP = 22;
+  const hullScale = (members: number) => Math.min(1.5, 1 + members / 14);
+  const pack = (it: Item): number => {
+    if (it.node) return it.w;
+    for (const c of it.children) c.w = pack(c);
+    // Which sibling each leaf belongs to, for column anchoring.
+    const owner = new Map<string, Item>();
+    for (const c of it.children) for (const l of c.leaves) owner.set(l.id, c);
+    const wired = (c: Item, dir: "pred" | "succ"): Item[] => {
+      const out: Item[] = [];
+      for (const l of c.leaves) {
+        for (const other of (dir === "pred" ? pred : succ).get(l.id) ?? []) {
+          const o = owner.get(other);
+          if (o && o !== c && !out.includes(o)) out.push(o);
+        }
+      }
+      return out;
+    };
+    // A column holds items with disjoint rank ranges. Each child prefers
+    // the column of the sibling feeding it, then the nearest free column
+    // to that side, then a new one on the right.
+    const columns: { items: Item[]; w: number; x: number }[] = [];
+    const free = (col: number, c: Item) =>
+      col >= 0 && col < columns.length &&
+      columns[col].items.every((o) => o.rmax < c.rmin || c.rmax < o.rmin);
+    const placed = new Set<Item>();
+    for (const c of it.children) {
+      const feeders = wired(c, "pred").filter((f) => placed.has(f));
+      const anchor = feeders.length
+        ? feeders.reduce((a, b) => (a.rmax > b.rmax ? a : b))
+        : null;
+      let col = -1;
+      if (anchor) {
+        const order = [anchor.col];
+        for (let d = 1; d < columns.length; d++) order.push(anchor.col + d, anchor.col - d);
+        col = order.find((k) => free(k, c)) ?? -1;
+      } else {
+        col = columns.findIndex((_, k) => free(k, c));
+      }
+      if (col === -1) {
+        columns.push({ items: [], w: 0, x: 0 });
+        col = columns.length - 1;
+      }
+      columns[col].items.push(c);
+      c.col = col;
+      placed.add(c);
+    }
+    // A card whose neighbours occupy a run of columns sits centered over
+    // the run when the run is free at its own ranks.
+    for (const c of it.children) {
+      const near = [...wired(c, "succ"), ...wired(c, "pred")];
+      if (!near.length) continue;
+      const lo = Math.min(c.col, ...near.map((n) => n.col));
+      const hi = Math.max(c.col + c.span - 1, ...near.map((n) => n.col + n.span - 1));
+      let ok = true;
+      for (let k = lo; k <= hi && ok; k++) {
+        if (k === c.col) continue;
+        ok = columns[k].items.every((o) => o === c || o.rmax < c.rmin || c.rmax < o.rmin);
+      }
+      if (ok && hi > lo) {
+        columns[c.col].items.splice(columns[c.col].items.indexOf(c), 1);
+        c.col = lo;
+        c.span = hi - lo + 1;
+        for (let k = lo; k <= hi; k++) if (!columns[k].items.includes(c)) columns[k].items.push(c);
       }
     }
-  }
-  for (const id of virtualOpen) {
-    const kids = nodes.filter((vn) => vn.id.startsWith(`${id}.`));
-    if (kids.length < 2) continue;
-    const cid = `cluster:${id}`;
-    g.setNode(cid, {});
-    clusters.push({
-      id: cid,
-      label: pretty(id.split(".").pop() ?? id),
-      kind: "family",
-    });
-    for (const vn of kids) {
-      if (!g.parent(vn.id)) g.setParent(vn.id, cid);
+    for (const col of columns) {
+      col.w = Math.max(...col.items.filter((o) => o.span === 1).map((o) => o.w), 40);
     }
-  }
-  for (const e of edges) g.setEdge(e.src, e.dst);
-  dagre.layout(g);
+    // A spanning item wider than its run widens the run's last column.
+    for (const c of it.children) {
+      if (c.span === 1) continue;
+      let have = -COL_GAP;
+      for (let k = c.col; k < c.col + c.span; k++) have += columns[k].w + COL_GAP;
+      if (c.w > have) columns[c.col + c.span - 1].w += c.w - have;
+    }
+    let x = HULL_PAD;
+    for (const col of columns) {
+      col.x = x;
+      x += col.w + COL_GAP;
+    }
+    it.columns = columns.map((c) => ({ w: c.w, x: c.x }));
+    for (const c of it.children) {
+      const x0 = columns[c.col].x;
+      const last = columns[c.col + c.span - 1];
+      const runW = last.x + last.w - x0;
+      c.x = x0 + (runW - c.w) / 2;
+    }
+    const labelW = it === root ? 0 : it.label.length * 6.2 * hullScale(it.leaves.length) + 28;
+    return Math.max(x - COL_GAP + HULL_PAD, labelW);
+  };
+  root.w = pack(root);
 
-  for (const vn of nodes) {
-    const at = g.node(vn.id);
-    vn.x = at.x - at.width / 2;
-    vn.y = at.y - at.height / 2;
+  // ── rows ──────────────────────────────────────────────────────────────
+  // Hull labels live in the gap above a container's first row; nested
+  // containers opening on the same row stack their bands.
+  const ROW_GAP = 40;
+  const BAND = 18;
+  const maxRank = Math.max(0, ...nodes.map((vn) => vn.rank));
+  const bands = new Array<number>(maxRank + 2).fill(0);
+  const countBands = (it: Item, stacked: number): void => {
+    if (it.node) return;
+    const mine = it === root ? 0 : stacked + 1;
+    if (it !== root) bands[it.rmin] = Math.max(bands[it.rmin], mine);
+    for (const c of it.children) countBands(c, c.rmin === it.rmin ? mine : 0);
+  };
+  countBands(root, 0);
+  const rowH = new Array<number>(maxRank + 1).fill(0);
+  for (const vn of nodes) rowH[vn.rank] = Math.max(rowH[vn.rank], vn.h);
+  const rowY: number[] = [];
+  let y = 10;
+  for (let r = 0; r <= maxRank; r++) {
+    if (r > 0) y += ROW_GAP + BAND * bands[r] + 5 * bands[r - 1];
+    rowY[r] = y;
+    y += rowH[r];
   }
-  const graphW = (g.graph().width ?? 0) + 12;
-  const graphH = (g.graph().height ?? 0) + 10;
-  // A requested width wider than the graph centers it; narrower is
-  // ignored — the figure scales in flow and pans in the lightbox.
-  const shift = Math.max(0, ((opts.width ?? 0) - graphW) / 2);
+  const height = y + 12;
+
+  // Absolute positions: a child's x is relative to its container.
+  const settle = (it: Item, x0: number): void => {
+    it.x += x0;
+    if (it.node) {
+      it.node.x = it.x;
+      it.node.y = rowY[it.node.rank] + (rowH[it.node.rank] - it.node.h) / 2;
+      return;
+    }
+    for (const c of it.children) settle(c, it.x);
+  };
+  root.x = 0;
+  for (const c of root.children) settle(c, 0);
+
+  // ── ports: one row above, each over the cards that read it ────────────
+  const portCards = nodes.filter(isPort);
+  const declared = new Map<string, number>([
+    ...graph.inputs.map((p, i) => [`input:${p.name}`, i] as [string, number]),
+    ...graph.buffers.map((p, i) => [`buffer:${p.name}`, 1000 + i] as [string, number]),
+  ]);
+  const targets = new Map<string, number>();
+  for (const p of portCards) {
+    const readers = edges.filter((e) => e.src === p.id).map((e) => vnodes.get(e.dst)!);
+    targets.set(
+      p.id,
+      readers.length
+        ? readers.reduce((a, b) => a + b.x + b.w / 2, 0) / readers.length
+        : root.w / 2,
+    );
+  }
+  portCards.sort(
+    (a, b) =>
+      targets.get(a.id)! - targets.get(b.id)! ||
+      (declared.get(a.id) ?? 0) - (declared.get(b.id) ?? 0),
+  );
+  const PORT_GAP = 10;
+  const px = portCards.map((p) => targets.get(p.id)! - p.w / 2);
+  for (let sweep = 0; sweep < 24; sweep++) {
+    let moved = false;
+    for (let i = 1; i < portCards.length; i++) {
+      const overlap = px[i - 1] + portCards[i - 1].w + PORT_GAP - px[i];
+      if (overlap > 0.5) {
+        px[i - 1] -= overlap / 2;
+        px[i] += overlap / 2;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  portCards.forEach((p, i) => {
+    p.x = px[i];
+    p.y = rowY[0] + (rowH[0] - p.h) / 2;
+  });
+
+  // Shift everything right of the left edge, then center in the frame.
+  const left = Math.min(0, ...nodes.map((vn) => vn.x));
+  const right = Math.max(root.w, ...nodes.map((vn) => vn.x + vn.w));
+  const graphW = right - left + 12;
+  const shift = -left + 6 + Math.max(0, ((opts.width ?? 0) - graphW) / 2);
   for (const vn of nodes) vn.x += shift;
   const maxW = Math.max(graphW, opts.width ?? 0);
-  const height = graphH;
 
-  // A group's label speaks at a volume bounded by its population.
-  const hullScale = (members: number) => Math.min(1.5, 1 + members / 14);
-
+  // ── hulls: one per open container, innermost last ─────────────────────
   const hulls: Hull[] = [];
-  for (const c of clusters) {
-    const at = g.node(c.id);
-    if (!at) continue;
-    const members = nodes.filter((vn) =>
-      vn.id.startsWith(c.id.slice("cluster:".length) + "."),
-    ).length;
-    hulls.push({
-      id: c.id.slice("cluster:".length),
-      label: c.label,
-      kind: c.kind,
-      scale: hullScale(members),
-      x: at.x - at.width / 2 - 4 + shift,
-      y: at.y - at.height / 2 - 4,
-      w: at.width + 8,
-      h: at.height + 8,
-    });
-  }
-  // Every other opened container gets a post-hoc box — drawn in full
-  // when it would touch nobody else's card, label-only when it would;
-  // either way the label is there to collapse by.
-  const opened = new Set(
-    nodes
-      .filter((vn) => vn.kind === "module" && vn.id.includes("."))
-      .map((vn) => vn.id.split(".").slice(0, -1).join("."))
-      .filter((id) => id && !id.endsWith(".*")),
-  );
-  for (const id of opened) {
-    // A container whose interior is a template already has the template
-    // hull speaking for it, and an open virtual group has its cluster;
-    // a second box would just echo the border.
-    if (vnodes.has(`${id}.*`) || hulls.some((h) => h.id === `${id}.*`)) continue;
-    if (virtualOpen.has(id)) continue;
-    const kids = nodes.filter(
-      (vn) => vn.kind === "module" && vn.id.startsWith(id + "."),
-    );
-    if (kids.length < 2) continue;
-    const x0 = Math.min(...kids.map((k) => k.x)) - 8;
-    const y0 = Math.min(...kids.map((k) => k.y)) - 20;
-    const x1 = Math.max(...kids.map((k) => k.x + k.w)) + 8;
-    const y1 = Math.max(...kids.map((k) => k.y + k.h)) + 8;
-    const bumped = nodes.some(
-      (vn) =>
-        !kids.includes(vn) &&
-        vn.x < x1 && vn.x + vn.w > x0 &&
-        vn.y < y1 && vn.y + vn.h > y0,
-    );
-    hulls.unshift({
-      id, label: pretty(id.split(".").pop() ?? id), kind: "family",
-      scale: hullScale(kids.length), bare: bumped,
-      x: x0, y: y0, w: x1 - x0, h: y1 - y0,
-    });
-  }
-
-  // Nested hulls: an outer box grows up and left until its label keeps
-  // a band of its own above the inner box's — headings never stack.
-  // Innermost first, so a three-deep nest staircases outward.
-  for (const outer of [...hulls].sort((a, b) => a.w * a.h - b.w * b.h)) {
-    if (outer.bare) continue;
+  const shiftItem = (it: Item): void => {
+    it.x += shift;
+    for (const c of it.children) shiftItem(c);
+  };
+  for (const c of root.children) shiftItem(c);
+  // How many open containers under `it` open on its own first row (and
+  // close on its last): the outer box reaches that many bands further.
+  const above = (it: Item): number =>
+    it.node ? 0 : Math.max(0, ...it.children.filter((c) => c.rmin === it.rmin).map((c) => 1 + above(c)));
+  const below = (it: Item): number =>
+    it.node ? 0 : Math.max(0, ...it.children.filter((c) => c.rmax === it.rmax).map((c) => 1 + below(c)));
+  const collect = (it: Item): void => {
+    if (it.node) return;
+    if (it !== root) {
+      const top = rowY[it.rmin] - BAND * (1 + above(it)) + 4;
+      const bottom = rowY[it.rmax] + rowH[it.rmax] + 6 + 5 * below(it);
+      hulls.push({
+        id: it.id,
+        label: it.label,
+        kind: it.kind === "template" ? "template" : "family",
+        scale: hullScale(it.leaves.length),
+        x: it.x,
+        y: top,
+        w: it.w,
+        h: bottom - top,
+      });
+    }
+    for (const c of it.children) collect(c);
+  };
+  collect(root);
+  // Nested boxes shrink inward so their edges never coincide.
+  for (const outer of hulls) {
     for (const inner of hulls) {
-      if (inner === outer) continue;
-      const contained =
-        inner.x >= outer.x - 1 && inner.x + inner.w <= outer.x + outer.w + 1 &&
-        inner.y >= outer.y - 1 && inner.y + inner.h <= outer.y + outer.h + 1;
-      if (!contained) continue;
-      if (inner.y - outer.y < 20) {
-        const lift = 20 - (inner.y - outer.y);
-        outer.y -= lift;
-        outer.h += lift;
-      }
-      if (inner.x - outer.x < 8) {
-        const push = 8 - (inner.x - outer.x);
-        outer.x -= push;
-        outer.w += push;
-      }
+      if (inner === outer || !inner.id.startsWith(outer.id + ".")) continue;
+      const nest = inner.id.split(".").length - outer.id.split(".").length;
+      inner.x = Math.max(inner.x, outer.x + 3 * nest);
+      inner.w = Math.min(inner.w, outer.x + outer.w - 3 * nest - inner.x);
     }
   }
 
-  // ── edge paths: bundle at both ends ───────────────────────────────────
-  // Every edge leaves its source's bottom center and lands on its
-  // destination's entry stem, a short vertical just above the card that
-  // carries the single arrowhead. Ten feeds into one LayerNorm read as
-  // one merging stream and one arrow, not ten arrowheads elbowing along
-  // the card's top edge.
+  // ── edge paths ────────────────────────────────────────────────────────
+  // Every downward edge leaves its source's bottom center and lands on
+  // the destination's entry stem, so however many feeds a card has, it
+  // wears one arrowhead. An edge whose straight run would cross a card
+  // bows around the column; an edge that runs upward bows too.
   const STEM = 12;
   const placedEdges: PlacedEdge[] = [];
   const arrows: PlacedArrow[] = [];
@@ -805,6 +1020,13 @@ export function layoutModelmap(graph: Limned, opts: MapOptions): ModelLayout {
   for (const e of edges) {
     (feeds.get(e.dst) ?? feeds.set(e.dst, []).get(e.dst)!).push(e.src);
   }
+  const blockers = (s: VNode, t: VNode, x1: number, x2: number): VNode[] =>
+    nodes.filter(
+      (vn) =>
+        vn !== s && vn !== t &&
+        vn.rank > s.rank && vn.rank < t.rank &&
+        vn.x < Math.max(x1, x2) + 2 && vn.x + vn.w > Math.min(x1, x2) - 2,
+    );
   for (const e of edges) {
     const s = vnodes.get(e.src)!;
     const t = vnodes.get(e.dst)!;
@@ -813,14 +1035,24 @@ export function layoutModelmap(graph: Limned, opts: MapOptions): ModelLayout {
     const y1 = s.y + s.h;
     const y2 = t.y - STEM;
     if (y2 <= y1) {
-      // A skip landing beside or above its source bows around the cards
-      // and keeps its own arrow; bundling is for the common downward flow.
       const bow = Math.max(s.w, t.w) / 2 + 26;
       placedEdges.push({
         src: e.src, dst: e.dst, shape: e.shape,
-        d: `M ${x1} ${y1} C ${x1 + bow} ${y1 + 24}, ${t.x + t.w / 2 + bow} ${t.y - 24}, ${t.x + t.w / 2} ${t.y}`,
+        d: `M ${x1} ${y1} C ${x1 + bow} ${y1 + 24}, ${x2 + bow} ${t.y - 24}, ${x2} ${t.y}`,
       });
-      arrows.push({ x: t.x + t.w / 2, y: t.y, variant: "" });
+      arrows.push({ x: x2, y: t.y, variant: "" });
+      continue;
+    }
+    const inWay = t.rank - s.rank > 1 ? blockers(s, t, x1, x2) : [];
+    if (inWay.length) {
+      const rightEdge = Math.max(...inWay.map((b) => b.x + b.w)) + 18;
+      const leftEdge = Math.min(...inWay.map((b) => b.x)) - 18;
+      const xm = rightEdge - Math.max(x1, x2) <= Math.min(x1, x2) - leftEdge ? rightEdge : leftEdge;
+      const ym = (y1 + y2) / 2;
+      placedEdges.push({
+        src: e.src, dst: e.dst, shape: e.shape,
+        d: `M ${x1} ${y1} C ${xm} ${y1 + (ym - y1) * 0.6}, ${xm} ${y2 - (y2 - ym) * 0.6}, ${x2} ${y2}`,
+      });
       continue;
     }
     const mid = (y1 + y2) / 2;
@@ -832,7 +1064,7 @@ export function layoutModelmap(graph: Limned, opts: MapOptions): ModelLayout {
   for (const [dst, srcs] of feeds) {
     const t = vnodes.get(dst)!;
     const kinds = new Set(srcs.map((id) => vnodes.get(id)?.kind ?? "module"));
-    if (t.y - STEM <= Math.max(...srcs.map((id) => vnodes.get(id)!.y))) continue;
+    if (srcs.every((id) => t.y - STEM <= vnodes.get(id)!.y + vnodes.get(id)!.h)) continue;
     arrows.push({
       x: t.x + t.w / 2,
       y: t.y,
@@ -871,7 +1103,7 @@ export function layoutModelmap(graph: Limned, opts: MapOptions): ModelLayout {
     h: height,
     name: graph.name,
     params: human(graph.params_total),
-    nodes: nodes.map(({ members: _members, order: _o, rank: _r, pos: _p, ...keep }) => keep),
+    nodes: nodes.map(({ members: _members, order: _o, pos: _p, ...keep }) => keep),
     edges: placedEdges,
     arrows,
     ties,

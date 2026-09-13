@@ -255,3 +255,6 @@ dl.glossary a.concept-link[href^="#"]::after { content: " (p. " target-counter(a
 
 a.chapter-ref { color: var(--text); text-decoration: none; }
 a.chapter-ref::after { content: " (p. " target-counter(attr(href), page) ")"; color: var(--text-faint); font-size: 0.85em; }
+
+/* the modelmap figure scales to the column; its natural size is for the web */
+.mm-svg { width: 100%; height: auto; }

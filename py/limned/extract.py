@@ -60,7 +60,7 @@ from torch.overrides import TorchFunctionMode
 
 from .annotations import CLASS_META, META, Limn
 
-SCHEMA = 3
+SCHEMA = 4
 
 # ── reading the code's own annotations ──────────────────────────────────
 # A model that documents its attributes with ``#:`` comments and sections
@@ -295,11 +295,20 @@ class _Tracer:
         bound = sig.bind(*args, **kwargs)
         self.inputs: list[dict[str, Any]] = []
         for pname, value in bound.arguments.items():
-            for t in _tensors(value):
-                self.inputs.append(
-                    {"name": pname, "shape": list(t.shape), "dtype": str(t.dtype).removeprefix("torch.")}
-                )
-            self.mode.stamp(value, frozenset({f"input:{pname}"}), union=False)
+            # A dict-valued argument (a structured observation) is several
+            # inputs wearing one name: each key becomes its own port, so the
+            # diagram can show which head reads the mask and which the tree.
+            ports = (
+                [(f"{pname}.{k}", v) for k, v in value.items()]
+                if isinstance(value, dict)
+                else [(pname, value)]
+            )
+            for port, part in ports:
+                for t in _tensors(part):
+                    self.inputs.append(
+                        {"name": port, "shape": list(t.shape), "dtype": str(t.dtype).removeprefix("torch.")}
+                    )
+                self.mode.stamp(part, frozenset({f"input:{port}"}), union=False)
         self.buffers: list[dict[str, Any]] = []
         for bname, buf in self.model.named_buffers():
             self.buffers.append(

@@ -35,6 +35,13 @@ export interface ModelmapEntry {
   out: string;
 }
 
+export interface ModelmapOptions {
+  /** The Python launcher, run from `root`. Default `["uv", "run", "python"]`;
+   * a project that does not list limned as a dependency can reach the
+   * sibling checkout with `["uv", "run", "--with-editable", "../penname/py", "python"]`. */
+  python?: string[];
+}
+
 const sha256 = (path: string) =>
   createHash("sha256").update(readFileSync(path)).digest("hex");
 
@@ -62,15 +69,30 @@ function staleReason(root: string, entry: ModelmapEntry): string | null {
 /** Extract every stale entry, printing its reason first — a rebuild that
  * says why is the difference between a cache and a mystery. Python runs
  * through `uv run` from `root`, the same way the models train. */
-export function ensureModelmaps(root: string, entries: ModelmapEntry[]): void {
+export function ensureModelmaps(
+  root: string,
+  entries: ModelmapEntry[],
+  opts: ModelmapOptions = {},
+): void {
+  const [cmd, ...args] = opts.python ?? ["uv", "run", "python"];
   for (const entry of entries) {
     const reason = staleReason(root, entry);
     if (reason === null) continue;
     console.log(`modelmap ${entry.symbol}: ${reason} — extracting`);
     execFileSync(
-      "uv",
-      ["run", "python", "-m", "limned", entry.symbol, "--out", entry.out],
+      cmd,
+      [...args, "-m", "limned", entry.symbol, "--out", entry.out],
       { cwd: root, stdio: "inherit" },
     );
   }
+}
+
+/** The vocabulary's `resolve` for the modelmap kind: reads the cached
+ * graph named by `spec.src` into `spec.graph`, so the renderer — which
+ * also runs in the browser — never opens a file. Other kinds pass
+ * through untouched. */
+export function resolveModelmap<S extends { kind: string }>(spec: S, ctx: { root: string }): S {
+  if (spec.kind !== "model-map") return spec;
+  const src = (spec as S & { src: string }).src;
+  return { ...spec, graph: JSON.parse(readFileSync(join(ctx.root, src), "utf-8")) as Limned };
 }

@@ -13,6 +13,7 @@
     "./practice": "./src/practice.ts",
     "./modelmap": "./src/modelmap.ts",
     "./modelmap-build": "./src/modelmap-build.ts",
+    "./modelmap-figure": "./src/modelmap-figure.ts",
     "./styles/*": "./styles/*"
   },
   "scripts": {

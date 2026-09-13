@@ -569,3 +569,51 @@ dl.glossary dt .nick { font: 500 12.5px var(--mono); color: var(--accent); margi
 dl.glossary dd { margin: 4px 0 0; color: var(--text-dim); font-size: 16.5px; }
 
 a.chapter-ref { color: var(--link); text-decoration: none; border-bottom: 1px dotted currentColor; }
+
+/* ── the modelmap figure (penname/modelmap-figure): structure and theme ink
+   over the print attributes. A site restyles any mm- class it wants. ── */
+.mm-body { position: relative; }
+.mm-stage { overflow: auto; }
+.mm-svg { display: block; }
+.mm-card { transition: transform 0.35s ease; animation: mm-in 0.3s ease; }
+.mm-card.expandable { cursor: pointer; }
+.mm-card.dim { opacity: 0.28; }
+.mm-node { fill: var(--bg); stroke: var(--text-dim); transition: width 0.35s ease, height 0.35s ease; }
+.mm-node.shadow { fill: var(--bg); stroke: var(--text-dim); }
+.mm-node.port { fill: var(--panel-deep); stroke: var(--border); }
+.mm-node.frozen { fill: var(--panel-deep); stroke: var(--link); }
+.mm-node.dormant { fill: var(--bg); stroke: var(--text-ghost); }
+.mm-card:hover > .mm-node:not(.shadow), .mm-card.selected > .mm-node:not(.shadow) { stroke: var(--accent); stroke-width: 1.8; }
+.mm-card.hit > .mm-node:not(.shadow) { stroke: var(--good); stroke-width: 2; }
+.mm-name { fill: var(--text); font-family: var(--mono); }
+.mm-sub { fill: var(--text-faint); font-family: var(--mono); }
+.mm-hull { fill: var(--text-ghost); fill-opacity: 0.12; stroke: var(--border); transition: x 0.35s ease, y 0.35s ease, width 0.35s ease, height 0.35s ease; }
+.mm-hull.template { fill: var(--bg); fill-opacity: 0.5; stroke: var(--text-faint); }
+.mm-hull-label { fill: var(--text-faint); font-family: var(--mono); cursor: pointer; }
+.mm-group:hover > .mm-hull-label { fill: var(--accent); }
+.mm-edge { stroke: var(--text-ghost); transition: d 0.35s ease; }
+.mm-edge.port { stroke: var(--border); }
+.mm-edge.frozen { stroke: var(--link); }
+.mm-edge.tie { stroke: var(--accent); }
+.mm-tip { fill: var(--text-ghost); }
+.mm-tip.port { fill: var(--border); }
+.mm-tip.frozen { fill: var(--link); }
+.mm-bar .mm-search { width: 180px; }
+.mm-bar .mm-zoom { min-width: 48px; display: none; }
+.mm-detail { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-soft); font: 400 13px var(--mono); color: var(--text-dim); line-height: 1.5; min-height: 3.2em; }
+.mm-detail b { color: var(--text); font-weight: 600; }
+.mm-detail-sub, .mm-detail-path, .mm-detail-hint { color: var(--text-faint); }
+.mm-detail-path { word-break: break-all; }
+@keyframes mm-in { from { opacity: 0; } }
+
+/* full screen: the stage fills the window and pans and zooms */
+figure.fig.mm-full { position: fixed; inset: 0; z-index: 60; margin: 0; padding: 14px 18px 12px; border-radius: 0; border: 0; background: var(--bg); display: flex; flex-direction: column; overflow: hidden; }
+figure.fig.mm-full .fig-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+figure.fig.mm-full .mm-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+figure.fig.mm-full .mm-stage { flex: 1 1 auto; min-height: 0; overflow: hidden; cursor: grab; border: 1px solid var(--border-soft); border-radius: 12px; background: var(--panel); touch-action: none; }
+figure.fig.mm-full .mm-stage.panning { cursor: grabbing; }
+figure.fig.mm-full .mm-svg { width: 100%; height: 100%; }
+figure.fig.mm-full .mm-detail { position: absolute; left: 12px; bottom: 12px; max-width: min(440px, 60%); margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); pointer-events: none; }
+figure.fig.mm-full .mm-bar .mm-zoom { display: inline; }
+figure.fig.mm-full .fig-note, figure.fig.mm-full figcaption { display: none; }
+html.mm-lock, html.mm-lock body { overflow: hidden; }
