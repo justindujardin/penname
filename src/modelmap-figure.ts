@@ -339,17 +339,23 @@ export function hydrateModelmapFigure(body: HTMLElement, spec0: ModelmapSpec): v
     const node = map.nodes.find((n) => n.id === selected);
     showDetail(node ?? null);
   };
+  // Three lines, always: the panel keeps one height whatever it shows,
+  // so hovering never moves the page. In flow a long line clips with an
+  // ellipsis; full screen lets it wrap.
+  const line = (cls: string, html: string) => `<div class="mm-detail-line ${cls}">${html}</div>`;
   const showDetail = (node: PlacedNode | null) => {
     if (!node) {
       detail.innerHTML =
-        `<span class="mm-detail-hint">hover a card for its shapes and sizes · click a stacked card to open it · click a group's label to fold it</span>`;
+        line("mm-detail-hint", "hover a card for its shapes and sizes") +
+        line("mm-detail-hint", "click a stacked card to open it · click a group's label to fold it") +
+        line("", "");
       return;
     }
     const [head, ...rest] = node.detail;
     detail.innerHTML =
-      `<b>${text(node.label)}</b>${node.sub ? ` <span class="mm-detail-sub">${text(node.sub)}</span>` : ""}` +
-      `<div class="mm-detail-path">${text(head)}</div>` +
-      rest.map((line) => `<div>${text(line)}</div>`).join("");
+      line("", `<b>${text(node.label)}</b>${node.sub ? ` <span class="mm-detail-sub">${text(node.sub)}</span>` : ""}`) +
+      line("mm-detail-path", text(head)) +
+      line("", text(rest.join(" · ")));
   };
 
   // ── navigation ──
